@@ -29,59 +29,88 @@ module "vpc" {
 }
 #####################################################################################################
 #SG
-# module "vpc_security_groups" {
-#   source = "./modules/security-groups"
-#   security_group_type = "vpc"
-#   vpc_id = module.vpc.vpc_id 
-# }
-
-# module "instance_security_groups" {
-#   source = "./modules/security-groups"
-
-#   security_group_type     = "instance"
-#   vpc_id                  = module.vpc.vpc_id
-#   enabled_security_groups = ["jenkins", "jenkins_worker", "sonarqube", "database", "monitoring"]
-# }
-
-module "security_group" {
-  source = "./modules/security-groups"
+module "jenkins-sg" {
+  source = "terraform-aws-modules/security-group/aws"
+  name   = "jenkins-sg"
   vpc_id = module.vpc.vpc_id
+
+  ingress_cidr_blocks = ["0.0.0.0/0"]
+  ingress_rules = ["https-443-tcp", "http-80-tcp", "postgresql-tcp", "ssh-tcp"]
+  egress_rules  = ["all-all"]
+
+  # Custom rules
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 8080
+      to_port     = 8080
+      protocol    = "tcp"
+      description = "Jenkins port"
+      cidr_blocks = "0.0.0.0/0"  
+    },
+    {
+      from_port   = 9000
+      to_port     = 9000
+      protocol    = "tcp"
+      description = "SonarQube port"
+      cidr_blocks = "0.0.0.0/0"  
+    },
+    {
+      from_port   = 9090
+      to_port     = 9090  
+      protocol    = "tcp"
+      description = "Prometheus port"
+      cidr_blocks = "0.0.0.0/0"  
+    }
+  ]
+}
+
+module "sonarqube-sg" {
+  source = "terraform-aws-modules/security-group/aws"
+  name   = "sonarqube-sg"
+  vpc_id = module.vpc.vpc_id
+
+  ingress_cidr_blocks = ["0.0.0.0/0"]
+  ingress_rules       = ["https-443-tcp", "http-80-tcp", "ssh-tcp"]
+  egress_rules        = ["all-all"]
+
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 8080
+      to_port     = 8080
+      protocol    = "tcp"
+      description = "Jenkins port"
+      cidr_blocks = "0.0.0.0/0"  
+    },
+    {
+      from_port   = 9000
+      to_port     = 9000
+      protocol    = "tcp"
+      description = "SonarQube port"
+      cidr_blocks = "0.0.0.0/0"  
+    }
+  ]
 }
 
 
 #####################################################################################################
-# INTERNET GATEWAY
-# module "igw" {
-#   source = "./modules/igw"
-#   depends_on = [module.vpc]
-#   vpc_id            = module.vpc.vpc_id
-#   public_subnet_ids = module.vpc.public_subnets
-#   route_table_name  = "Public Route Table"
-#   igw_name          = "datnguyen-igw"
-#   tags              = {
-#     Environment = "dev"
-#     Name        = "datnguyen-igw"
-#   }
-# }
-
-#####################################################################################################
 # EC2
 module "jenkins_master" {
-  source           = "./modules/ec2"
-  vpc_id = module.vpc.vpc_id
-  ami_id           = "ami-05778ef68e10b91d7"
-  instance_type    = "t2.medium"
-  key_name         = "instance-keypair"
-  subnet_id = module.vpc.public_subnets[0]
-  #public_subnet_ids = module.vpc.public_subnets
-  sg_name          = module.security_group.security_groups["jenkins-sg"]
+  source        = "./modules/ec2"
+  vpc_id        = module.vpc.vpc_id
+  ami_id        = "ami-05778ef68e10b91d7"
+  instance_type = "t2.medium"
+  key_name      = "instance-keypair"
+  subnet_id     = module.vpc.public_subnets[0]
+  security_group_id = module.jenkins-sg.security_group_id
+
   instance_name    = "jenkins-master"
   volume_size      = 80
   user_data_script = "${path.root}/scriptfiles/jenkins_setup.sh"
-  tags             = {
-    Environment = "dev",
+
+  tags = {
+    Environment = "dev"
     Role        = "CI"
-    Name = "jenkins-master"
+    Name        = "jenkins-master"
   }
 }
 
@@ -92,8 +121,7 @@ module "jenkins_worker" {
   instance_type    = "t2.medium"
   key_name         = "instance-keypair"
   subnet_id = module.vpc.public_subnets[0]
-  #public_subnet_ids = module.vpc.public_subnets
-  sg_name          = module.security_group.security_groups["jenkins-sg"]
+  security_group_id = module.jenkins-sg.security_group_id
   instance_name    = "jenkins-worker"
   volume_size      = 80
   user_data_script = "${path.root}/scriptfiles/jenkins_setup.sh"
@@ -111,8 +139,7 @@ module "sonarqube_server" {
   instance_type    = "t2.medium"
   key_name         = "instance-keypair"
   subnet_id = module.vpc.public_subnets[0]
-  #public_subnet_ids = module.vpc.public_subnets
-  sg_name          = module.security_group.security_groups["sonarqube-sg"]
+  security_group_id = module.sonarqube-sg.security_group_id
   instance_name    = "sonarqube"
   volume_size      = 30
   tags             = {
@@ -129,8 +156,6 @@ module "database_server" {
   instance_type    = "t2.medium"
   key_name         = "instance-keypair"
   subnet_id = module.vpc.public_subnets[0]
-  #public_subnet_ids = module.vpc.private_subnets
-  sg_name          = module.security_group.security_groups["database-sg"]
   instance_name    = "database"
   volume_size      = 30
   tags             = {
@@ -147,8 +172,6 @@ module "monitoring_server" {
   instance_type    = "t2.medium"
   key_name         = "instance-keypair"
   subnet_id = module.vpc.public_subnets[0]
-  #public_subnet_ids = module.vpc.public_subnets
-  sg_name          = module.security_group.security_groups["monitoring-sg"]
   instance_name    = "monitoring"
   volume_size      = 80
   user_data_script = "${path.root}/scriptfiles/prometheus_grafana.sh"
@@ -208,18 +231,6 @@ module "monitoring_eip" {
 
 #####################################################################################################
 # EKS
-# module "eks" {
-#   source                   = "./modules/eks"
-#   cluster_name             = "EKS-Cluster"
-#   vpc_id                   = module.vpc.vpc_id
-#   private_subnets          = module.vpc.private_subnets
-#   control_plane_subnet_ids = module.vpc.private_subnets
-#   ami_id                   = ["ami-05778ef68e10b91d7"] 
-#   instance_type            = ["t2.medium"]
-#   key_name                 = "worker-keypair"
-
-# }
-
 module "eks" {
   source          = "terraform-aws-modules/eks/aws"
   version         = "20.8.4"

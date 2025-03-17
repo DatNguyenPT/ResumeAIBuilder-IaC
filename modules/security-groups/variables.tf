@@ -1,19 +1,3 @@
-# variable "vpc_id" {
-#   description = "VPC ID"
-#   type        = string
-# }
-
-# variable "enabled_security_groups" {
-#   description = "List of security groups to create"
-#   type        = list(string)
-#   default     = ["jenkins", "sonarqube", "database", "monitoring"]
-# }
-
-# variable "security_group_type" {
-#   description = "Type of security group (vpc or instance)"
-#   type        = string
-# }
-
 variable "config" {
    default = {
     "jenkins" = {

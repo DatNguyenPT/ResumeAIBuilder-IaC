@@ -14,16 +14,6 @@ variable "key_name" {
   default     = null
 }
 
-# variable "public_subnet_ids" {
-#   description = "List of subnet IDs to use"
-#   type        = list(string)
-# }
-
-variable "sg_name" {
-  description = "Security group name to attach to the instance"
-  type        = string
-}
-
 variable "instance_name" {
   description = "Name of the instance"
   type        = string
